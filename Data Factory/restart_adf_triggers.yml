@@ -1,0 +1,45 @@
+# Azure Pipeline to restart Azure Data Factory Triggers
+
+trigger:
+- none
+
+variables:
+- group: VariableGroupName
+
+jobs:
+- job: ManageADFTriggers
+  displayName: 'Manage Azure Data Factory Triggers'
+  pool:
+    vmImage: 'windows-latest'
+
+  steps:
+  - task: AzurePowerShell@4
+    displayName: 'Data Factory: Stop all triggers'
+    inputs:
+      azureSubscription: '$(connection)' # Service Connection
+      ScriptType: InlineScript
+      Inline: |
+        $triggers = Get-AzDataFactoryV2Trigger -ResourceGroupName $(resourcegroupName) -DataFactoryName $(dataFactoryName) -ErrorAction SilentlyContinue
+        if ($triggers) {
+          foreach ($trigger in $triggers) {
+            Stop-AzDataFactoryV2Trigger -ResourceGroupName $(resourcegroupName) -DataFactoryName $(dataFactoryName) -Name $trigger.Name -Force
+          }
+        }
+      azurePowerShellVersion: 'LatestVersion'
+
+  - task: AzurePowerShell@4
+    displayName: 'Data Factory: Start all triggers'
+    inputs:
+      azureSubscription: '$(connection)'
+      ScriptType: InlineScript
+      Inline: |
+        $triggers = Get-AzDataFactoryV2Trigger -ResourceGroupName $(resourcegroupName) -DataFactoryName $(dataFactoryName) -ErrorAction SilentlyContinue
+        if ($triggers) {
+          foreach ($trigger in $triggers) {
+            Start-AzDataFactoryV2Trigger -ResourceGroupName $(resourcegroupName) -DataFactoryName $(dataFactoryName) -Name $trigger.Name -Force
+          }
+        }
+      azurePowerShellVersion: 'LatestVersion'
+
+# Use this pipeline during deployment of Azure Data Factory changes to prevent conflicts. Stopping triggers before deployment and restarting them after deployment 
+# is a best practice to ensure smooth updates without trigger-related errors.      

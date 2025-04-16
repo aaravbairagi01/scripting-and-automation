@@ -1,0 +1,65 @@
+trigger: none
+
+pool:
+  vmImage: "windows-latest"
+
+parameters:
+
+- name: environment
+  type: string
+  default: dev
+  values:
+    - dev
+    - stg
+
+variables:
+  - group: adf-datafactory-${{ parameters.environment }}
+# create two separate variable groups with respective values:
+#   1. adf-datafactory-dev
+#   2. adf-datafactory-stg
+
+stages:
+  - stage: Build 
+    jobs:
+# Dev Environment
+      - job:
+        condition: eq('${{ parameters.envName }}', 'dev')
+        steps:
+          # Delete Azure Data Factory items
+          - task: delete-adf-items@2 # Refer: https://azurebi-docs.jppp.org/vsts-extensions/azure-data-factory-delete.html?tabs=docs-open
+            displayName: "Delete items from Dev DataFactory"
+            inputs:
+              azureSubscription: '$(devSubscriptionID)' # Dev Service Connection Name
+              ResourceGroupName: '$(devResourceGroup)' # Name of the Resource Group containing the Data Factory
+              DatafactoryName: '$(devDataFactoryName)' # Name of the Data Factory
+              TriggerFilter: 'trigger1' #determine which Trigger(s) to delete. '*' will delete all triggers.
+              PipelineFilter: 'pipeline1' #determine which pipelines to delete.
+              DataflowFilter: 'df' #determine which Data flow(s) to delete.
+              DatasetFilter: 'dataset' #determine which Dataset(s) to delete.
+              ServiceFilter: 'ls1' #determines which Linked Service(s) to delete.
+              Sorting: descending # Option: Ascending, Descending
+              #continue: true # Optional
+              #Throttle: 5 # Optional
+              detectDependancy: true # Option: true, false
+
+# Stg Environment 
+      - job:
+        condition: eq('${{ parameters.envName }}', 'stg')
+        steps:
+          # Delete Azure Data Factory items
+          - task: delete-adf-items@2
+            displayName: "Delete items from Stg DataFactory"
+            inputs:
+              azureSubscription: '$(stgSubscriptionID)' # Stg Service Connection Name
+              ResourceGroupName: '$(stgResourceGroup)' # Name of the Resource Group containing the Data Factory
+              DatafactoryName: '$(stgDataFactoryName)' # Name of the Data Factory
+              TriggerFilter: 'trigger1' #determine which Trigger(s) to delete. '*' will delete all triggers.
+              PipelineFilter: 'pipeline1' #determine which pipelines to delete.
+              DataflowFilter: 'df' #determine which Data flow(s) to delete.
+              DatasetFilter: 'dataset' #determine which Dataset(s) to delete.
+              ServiceFilter: 'ls1' #determines which Linked Service(s) to delete.
+              Sorting: descending # Option: Ascending, Descending
+              #continue: true # Optional
+              #Throttle: 5 # Optional
+              detectDependancy: true # Option: true, false
+      
