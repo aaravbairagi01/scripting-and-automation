@@ -1,0 +1,101 @@
+trigger:
+- none
+parameters:
+- name: environment
+  displayName: "Environment"
+  default: dev
+  values:
+   - dev
+   - stg
+   - prod
+
+#- name: adfName
+#  displayName: "Please select the ADF"
+#  type: string
+#  default: "DevDataFactory-Name"
+#  values:
+#    - DevDataFactory-Name
+#    - StgDataFactory-Name
+#    - ProdDataFactory-Name
+
+- name: adftriggerstatus
+  displayName: "Set trigger status"
+  type: string
+  default: "Stop-Trigger-By-Name"
+  values:
+    - Start-Trigger-By-Name
+    - Stop-Trigger-By-Name
+    - Start-All
+    - Stop-All
+ 
+- name: adftriggerfilter
+  displayName: "Comma separated list with trigger name to be enabled/disabled: 'trigger1,trigger2'"
+  type: string
+  default: ""
+  
+  
+variables:
+  - template: /ADF/variables/${{ parameters.environment }}-variables.yaml
+
+pool:
+  name: Azure Pipelines
+  vmImage: 'windows-latest'
+
+stages:
+- stage: Toggle_Trigger
+  displayName: "Run New Pipeline - for $(${{ parameters.environment }}-adfName)"
+  jobs:
+  
+  - job: Start_all_trigger
+    condition: eq('${{ parameters.adftriggerstatus }}', 'Start-All')
+    displayName: "Enable all triggers in Azure Data Factory"
+    steps:
+    - checkout: self
+      path: paf
+    - task: AzurePowerShell@5    
+      displayName: Start Triggers
+      inputs:
+        azureSubscription: '$(${{ parameters.environment }}-sc-name)'
+        ScriptType: 'InlineScript'
+        Inline: |
+          $triggersADF = Get-AzDataFactoryV2Trigger -DataFactoryName "$(${{ parameters.environment }}-adfName)" -ResourceGroupName "$(${{ parameters.environment }}-rg-name)";
+          $triggersADF | ForEach-Object { Start-AzDataFactoryV2Trigger -ResourceGroupName "$(${{ parameters.environment }}-rg-name)" -DataFactoryName "$(${{ parameters.environment }}-adfName)" -Name $_.name -Force }
+        azurePowerShellVersion: 'LatestVersion'
+        
+  - job: Stop_all_trigger
+    condition: eq('${{ parameters.adftriggerstatus }}', 'Stop-All')
+    displayName: "Disable all triggers in Azure Data Factory"
+    steps:
+    - checkout: self
+      path: paf
+    - task: AzurePowerShell@5    
+      displayName: Stop Triggers
+      inputs:
+        azureSubscription: '$(${{ parameters.environment }}-sc-name)'
+        ScriptType: 'InlineScript'
+        Inline: |
+          $triggersADF = Get-AzDataFactoryV2Trigger -DataFactoryName "$(${{ parameters.environment }}-adfName)" -ResourceGroupName "$(${{ parameters.environment }}-rg-name)";
+          $triggersADF | ForEach-Object { Stop-AzDataFactoryV2Trigger -ResourceGroupName "$(${{ parameters.environment }}-rg-name)" -DataFactoryName "$(${{ parameters.environment }}-adfName)" -Name $_.name -Force }
+        azurePowerShellVersion: 'LatestVersion'
+      
+  - job: Start_or_Stop_limited_trigger
+    condition: or(eq('${{ parameters.adftriggerstatus }}', 'Start-Trigger-By-Name'), eq('${{ parameters.adftriggerstatus }}', 'Stop-Trigger-By-Name'))
+    displayName: "${{ parameters.adftriggerstatus }} in Azure Data Factory"
+    steps:
+    - checkout: self
+      path: paf
+    - task: AzurePowerShell@5
+      displayName: 'Enable or disable certain triggers'
+      inputs:
+        azureSubscription: '$(${{ parameters.environment }}-sc-name)'
+        pwsh: true
+        azurePowerShellVersion: LatestVersion
+        scriptType: filePath
+        scriptPath: '$(Agent.BuildDirectory)/paf/ADF/scripts/set-triggers.ps1'
+        scriptArguments: >
+          -DataFactoryName $(${{ parameters.environment }}-adfName)
+          -DataFactoryResourceGroup $(${{ parameters.environment }}-rg-name)
+          -DataFactorySubscriptionId $(az-subscription-id)
+          -TriggerStatus ${{ parameters.adftriggerstatus }}
+          -EnabledTriggers ${{ parameters.adftriggerfilter }}
+    
