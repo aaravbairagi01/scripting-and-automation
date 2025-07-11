@@ -1,0 +1,150 @@
+trigger: none
+
+pool:
+  name: Azure Pipelines
+  vmImage: 'windows-latest'
+
+resources:
+  pipelines:
+  - pipeline: drop-resource  # Name of the pipeline resource
+    source: Build-ADF # Name of the triggering pipeline
+
+
+parameters:
+
+- name: environment
+  type: string
+  default: dev
+  values:
+    - dev
+    - stg
+
+
+
+variables:
+  - group: adf-<datafactoryname>-${{ parameters.environment }}
+
+  # - name: resourceGroupName
+  #   value: $(resourceGroupName)
+
+
+  # - name: dataFactoryName
+  #   value: $(dataFactoryName)
+
+  - name: configFile
+    value: config-${{ parameters.environment }}.json
+
+  - name: region
+    value: centralus
+
+stages:
+- stage: Dev
+  condition: eq('${{ parameters.environment }}', 'dev')
+  jobs:
+  - deployment: DeployDev
+    displayName: Deploy Dev
+    environment: DEV
+    pool:
+      name: Azure Pipelines
+      vmImage: 'windows-latest'
+    strategy:
+      runOnce:
+        deploy:  
+          steps:
+          - download: drop-resource
+            artifact: drop 
+            
+          - task: PowerShell@2
+            inputs:
+              targetType: 'inline'
+              script: |
+                $environmentVars = get-childitem -path Env:*
+                foreach($var in $environmentVars)
+                {
+                  $keyname = $var.Key
+                  $keyvalue = $var.Value
+                    Write-Host "${keyname}: $keyvalue"
+                }
+            displayName: 'Get Release Variables'
+            
+          - task: SQLPlayer.DataFactoryTools.PublishADF.PublishADFTask@1
+            displayName: 'Publish ADF $(dataFactoryName) from JSON files'
+            inputs:
+              azureSubscription: 'DevServiceConnectionName'
+              ResourceGroupName: '$(resourceGroupName)'
+              DataFactoryName: '$(dataFactoryName)'
+              DataFactoryCodePath: '$(PIPELINE.WORKSPACE)/drop-resource/drop/'
+              Location: '$(region)'
+              IncrementalDeployment: true
+              StageType: FilePath
+              StageConfigFile: '$(PIPELINE.WORKSPACE)/drop-resource/drop/deployment/$(configFile)'
+              DeleteNotInSource: false
+              CreateNewInstance: false
+              FilteringType: Inline
+              FilterText: |
+                -managedVirtualNetwork.*
+                -managedVirtualNetwork*
+                -managedVirtualNetwork/default/managedPrivateEndpoint/*
+                -IntegrationRuntim*
+                -IntegrationRuntime.*
+                -IntegrationRuntime*
+                -managedPrivateEndpoint*
+                -managedPrivateEndpoint/*
+                -*managedPrivateEndpoint*
+              TriggerStartMethod: 'KeepPreviousState'
+
+
+- stage: Stg
+  condition: eq('${{ parameters.environment }}', 'stg')
+  jobs:
+  - deployment: DeployStg
+    displayName: Deploy Stg
+    environment: STG
+    pool:
+      name: Azure Pipelines
+      vmImage: 'windows-latest'
+    strategy:
+      runOnce:
+        deploy:  
+          steps:
+          - download: drop-resource
+            artifact: drop 
+            
+          - task: PowerShell@2
+            inputs:
+              targetType: 'inline'
+              script: |
+                $environmentVars = get-childitem -path Env:*
+                foreach($var in $environmentVars)
+                {
+                  $keyname = $var.Key
+                  $keyvalue = $var.Value
+                    Write-Host "${keyname}: $keyvalue"
+                }
+            displayName: 'Get Release Variables'
+            
+          - task: SQLPlayer.DataFactoryTools.PublishADF.PublishADFTask@1
+            displayName: 'Publish ADF $(dataFactoryName) from JSON files'
+            inputs:
+              azureSubscription: 'ProdServiceConnectionName'
+              ResourceGroupName: '$(resourceGroupName)'
+              DataFactoryName: '$(dataFactoryName)'
+              DataFactoryCodePath: '$(PIPELINE.WORKSPACE)/drop-resource/drop/'
+              Location: '$(region)'
+              IncrementalDeployment: true
+              StageType: FilePath
+              StageConfigFile: '$(PIPELINE.WORKSPACE)/drop-resource/drop/deployment/$(configFile)'
+              DeleteNotInSource: false
+              CreateNewInstance: false
+              FilteringType: Inline
+              FilterText: |
+                -managedVirtualNetwork.*
+                -managedVirtualNetwork*
+                -managedVirtualNetwork/default/managedPrivateEndpoint/*
+                -IntegrationRuntim*
+                -IntegrationRuntime.*
+                -IntegrationRuntime*
+                -managedPrivateEndpoint*
+                -managedPrivateEndpoint/*
+                -*managedPrivateEndpoint*
+              TriggerStartMethod: 'KeepPreviousState'          
