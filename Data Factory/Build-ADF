@@ -1,0 +1,61 @@
+trigger:
+  - main
+
+pool:
+  name: Azure Pipelines
+  vmImage: 'windows-latest'
+
+parameters:
+  - name: environment
+    type: string
+    default: dev
+
+variables:
+  - group: adf-datafactory-${{ parameters.environment }}
+
+  - name: environment
+    value: ${{ parameters.environment }}
+
+  - name: resourceGroupName
+    value: $(resourceGroupName)
+   
+jobs:
+  - job: Verification
+    steps:
+    - powershell: |
+        $environmentVars = get-childitem -path Env:*
+        foreach($var in $environmentVars)
+        {
+          $keyname = $var.Key
+          $keyvalue = $var.Value
+            Write-Host "${keyname}: $keyvalue"
+        }
+      displayName: 'Get Build Variables'
+      
+    - powershell: '(Get-ChildItem -Path $(BUILD.SOURCESDIRECTORY) -Attributes !Directory –Recurse ).FullName'
+      displayName: 'Get File List'  
+  
+    - task: SQLPlayer.DataFactoryTools.BuildADF.BuildADFTask@1
+      displayName: 'Validate ADF files'
+      inputs:
+        DataFactoryCodePath: .\
+
+    - task: CopyFiles@2
+      displayName: 'Copy Files to: $(Build.ArtifactStagingDirectory)'
+      inputs:
+        Contents: |
+          **
+          !BuildScripts\**
+          !.git\**
+          !DataFactory-Dev\**
+          !Database\**
+          !testfile.txt
+          !.gitignore
+          !arm-template-parameters-definition.json
+          !build-dataFactory.yml
+          !readme.md
+        TargetFolder: '$(Build.ArtifactStagingDirectory)'
+        OverWrite: true
+
+    - task: PublishBuildArtifacts@1
+      displayName: 'Publish Artifact: drop'
